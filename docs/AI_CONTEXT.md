@@ -57,8 +57,13 @@ review:
   - APIキー未設定時はキーワードベースのルール判定
 - 注意:
   - このメモの既存方針は Gemini API 前提。
-  - 2026-06-08時点のローカル実装は OpenAI Responses API 前提で `OPENAI_API_KEY` / `OPENAI_MODEL` を参照。
-  - 次回作業時に、AI判定を Gemini に寄せるか OpenAI のまま進めるか決める。
+  - 2026-06-08時点の途中実装では OpenAI Responses API 前提だったが、Gemini API に変更した。
+  - APIキーはコード、README、GitHubメモに書かない。
+- 2026-06-08 Gemini API 変更:
+  - AI判定は `GEMINI_API_KEY` / `GEMINI_MODEL` を参照する。
+  - デフォルトモデルは `gemini-2.5-flash`。
+  - Gemini `generateContent` の JSON出力を使い、`include` / `exclude`、`positivity_score`、`reason` を受け取る。
+  - `GEMINI_API_KEY` 未設定時はキーワードベースのルール判定にフォールバックする。
 - 環境:
   - Python 3.13.4 をインストール済み
   - `backend/.venv` 作成済み
