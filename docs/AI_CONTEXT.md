@@ -40,3 +40,28 @@ review:
 - 変更前に関連ファイルを確認する
 - Gemini APIキーをコードに直書きしない
 - JSONパース失敗時は review 扱いにする
+
+## 2026-06-08 作業メモ
+- ローカル作業フォルダ: `hp-news`
+- 現在のMVP構成:
+  - backend: Flask + SQLite
+  - frontend: React + Vite
+- ポジティブニュースの定義を追加:
+  - 単に明るい話題ではなく、社会・地域・人の状況が前に進む根拠があるニュース
+  - 改善、解決策、支援、回復、挑戦、学びのいずれかを重視
+  - 事件、事故、災害、訃報、対立、不祥事が中心で改善要素が薄いものは除外
+- 実装済み:
+  - `/api/positive-definition`
+  - AIフィルタ判定理由 `ai_reason`
+  - `ai_decision = include` かつ `positivity_score >= 70` のニュースだけ表示
+  - APIキー未設定時はキーワードベースのルール判定
+- 注意:
+  - このメモの既存方針は Gemini API 前提。
+  - 2026-06-08時点のローカル実装は OpenAI Responses API 前提で `OPENAI_API_KEY` / `OPENAI_MODEL` を参照。
+  - 次回作業時に、AI判定を Gemini に寄せるか OpenAI のまま進めるか決める。
+- 環境:
+  - Python 3.13.4 をインストール済み
+  - `backend/.venv` 作成済み
+  - Flask依存関係インストール済み
+  - API起動確認済み: `http://127.0.0.1:5000/api/health`
+  - フロント起動確認済み: `http://127.0.0.1:5173/`
