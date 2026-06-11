@@ -22,6 +22,22 @@ NEWS_API_DEFAULT_QUERY = (
     "improvement OR solution OR support OR recovery OR breakthrough OR "
     "innovation OR success OR education OR environment"
 )
+RELATED_NEWS_SEARCH_URL = "https://news.google.com/search"
+DECISION_LABELS = {
+    "include": "採用",
+    "review": "要確認",
+    "exclude": "除外",
+}
+
+
+def related_news_search_url(query: str) -> str:
+    params = {
+        "q": query,
+        "hl": "ja",
+        "gl": "JP",
+        "ceid": "JP:ja",
+    }
+    return f"{RELATED_NEWS_SEARCH_URL}?{parse.urlencode(params)}"
 
 
 POSITIVE_NEWS_DEFINITION = {
@@ -112,7 +128,7 @@ MOCK_NEWS = [
         "category": "地域",
         "positivity_score": 92,
         "source_name": "Positive Local",
-        "source_url": "",
+        "source_url": related_news_search_url("空き家 学習スペース 再生 地域"),
     },
     {
         "title": "海洋プラスチック削減へ、新素材の実証実験が前進",
@@ -124,7 +140,7 @@ MOCK_NEWS = [
         "category": "環境",
         "positivity_score": 88,
         "source_name": "Green Future News",
-        "source_url": "",
+        "source_url": related_news_search_url("海洋プラスチック 削減 新素材 実証実験"),
     },
     {
         "title": "中小企業の技術継承を支えるAI研修プログラムが始動",
@@ -136,7 +152,7 @@ MOCK_NEWS = [
         "category": "テクノロジー",
         "positivity_score": 84,
         "source_name": "Tech Hope",
-        "source_url": "",
+        "source_url": related_news_search_url("中小企業 技術継承 AI 研修プログラム"),
     },
     {
         "title": "被災地の商店街で若手起業家による新店舗が相次いで開業",
@@ -148,7 +164,7 @@ MOCK_NEWS = [
         "category": "経済",
         "positivity_score": 90,
         "source_name": "Hope Economy",
-        "source_url": "",
+        "source_url": related_news_search_url("被災地 商店街 若手起業家 新店舗 開業"),
     },
     {
         "title": "高校生チームが高齢者向け移動支援アプリを開発",
@@ -160,7 +176,7 @@ MOCK_NEWS = [
         "category": "挑戦",
         "positivity_score": 95,
         "source_name": "Youth Challenge Journal",
-        "source_url": "",
+        "source_url": related_news_search_url("高校生 高齢者 移動支援 アプリ 開発"),
     },
 ]
 
@@ -188,7 +204,13 @@ def create_app() -> Flask:
                 """,
                 (POSITIVE_NEWS_DEFINITION["threshold"],),
             ).fetchall()
-        return jsonify({"items": [dict(row) for row in rows]})
+            decision_counts = get_decision_counts(conn)
+        return jsonify(
+            {
+                "items": [dict(row) for row in rows],
+                "meta": build_news_meta(decision_counts),
+            }
+        )
 
     @app.get("/api/positive-definition")
     def positive_definition():
@@ -196,8 +218,10 @@ def create_app() -> Flask:
 
     @app.post("/api/news/refresh")
     def refresh_news():
-        changed = fetch_and_store_positive_news()
-        return jsonify({"changed": changed})
+        result = fetch_and_store_positive_news()
+        with get_connection() as conn:
+            decision_counts = get_decision_counts(conn)
+        return jsonify({**result, "meta": build_news_meta(decision_counts)})
 
     return app
 
@@ -256,7 +280,8 @@ def ensure_seed_news() -> None:
         stale_mock_links = conn.execute(
             """
             SELECT COUNT(*) FROM news
-            WHERE title IN ({}) AND source_url LIKE 'https://example.com/%'
+            WHERE title IN ({})
+              AND (source_url = '' OR source_url LIKE 'https://example.com/%')
             """.format(placeholders),
             mock_titles,
         ).fetchone()[0]
@@ -269,16 +294,18 @@ def ensure_seed_news() -> None:
         fetch_and_store_positive_news()
 
 
-def fetch_and_store_positive_news() -> int:
+def fetch_and_store_positive_news() -> dict:
     """Fetch positive news from NewsAPI when configured, otherwise use mock data."""
     news_api_key = os.getenv("NEWS_API_KEY")
+    source = "mock"
+    warning = ""
     if news_api_key:
         try:
             items = fetch_newsapi_news(news_api_key)
+            source = "newsapi"
         except (OSError, KeyError, json.JSONDecodeError, ValueError) as exc:
-            items = build_mock_news_with_reason(
-                f"NewsAPI取得に失敗したためモックデータを使用: {exc}"
-            )
+            warning = f"NewsAPI取得に失敗したためモックデータを使用: {exc}"
+            items = build_mock_news_with_reason(warning)
     else:
         items = MOCK_NEWS
 
@@ -324,7 +351,13 @@ def fetch_and_store_positive_news() -> int:
                 ),
             )
             changed += cursor.rowcount
-    return changed
+    return {
+        "changed": changed,
+        "source": source,
+        "source_label": "NewsAPI" if source == "newsapi" else "モックデータ",
+        "fetched": len(items),
+        "warning": warning,
+    }
 
 
 def fetch_newsapi_news(api_key: str) -> list[dict]:
@@ -413,7 +446,13 @@ def classify_news_item(item: dict) -> dict:
     if api_key:
         try:
             return classify_with_gemini(item, api_key)
-        except (OSError, KeyError, json.JSONDecodeError, ValueError) as exc:
+        except json.JSONDecodeError as exc:
+            return {
+                "decision": "review",
+                "positivity_score": 60,
+                "reason": f"GeminiのJSON解析に失敗したため要確認: {exc}",
+            }
+        except (OSError, KeyError, ValueError) as exc:
             fallback = classify_with_rules(item)
             fallback["reason"] = f"AI判定に失敗したためルール判定を使用: {exc}"
             return fallback
@@ -481,7 +520,7 @@ def classify_with_gemini(item: dict, api_key: str) -> dict:
                 "properties": {
                     "decision": {
                         "type": "STRING",
-                        "enum": ["include", "exclude"],
+                        "enum": ["include", "review", "exclude"],
                     },
                     "positivity_score": {
                         "type": "INTEGER",
@@ -512,8 +551,11 @@ def classify_with_gemini(item: dict, api_key: str) -> dict:
     output_text = extract_gemini_response_text(data)
     result = json.loads(output_text)
     score = max(0, min(100, int(result["positivity_score"])))
+    decision = result["decision"]
+    if decision not in DECISION_LABELS:
+        raise ValueError(f"Unexpected Gemini decision: {decision}")
     return {
-        "decision": result["decision"],
+        "decision": decision,
         "positivity_score": score,
         "reason": result["reason"][:240],
     }
@@ -548,9 +590,34 @@ def build_positive_news_filter_prompt() -> str:
 判定ルール:
 - positivity_score は 0 から 100。
 - {POSITIVE_NEWS_DEFINITION["threshold"]} 点以上かつ前向きな根拠が明確な場合だけ include。
+- 判断に迷う場合、またはポジティブ要素と注意要素が拮抗する場合は review。
 - 課題を扱っていても、改善策や回復が記事の中心なら include できる。
 - 理由は日本語で短く、採用・除外の根拠を具体的に書く。
 """.strip()
+
+
+def get_decision_counts(conn: sqlite3.Connection) -> dict[str, int]:
+    rows = conn.execute(
+        """
+        SELECT ai_decision, COUNT(*) AS count
+        FROM news
+        GROUP BY ai_decision
+        """
+    ).fetchall()
+    counts = {decision: 0 for decision in DECISION_LABELS}
+    for row in rows:
+        counts[row["ai_decision"]] = row["count"]
+    return counts
+
+
+def build_news_meta(decision_counts: dict[str, int]) -> dict:
+    return {
+        "news_api_configured": bool(os.getenv("NEWS_API_KEY")),
+        "gemini_configured": bool(os.getenv("GEMINI_API_KEY")),
+        "threshold": POSITIVE_NEWS_DEFINITION["threshold"],
+        "decision_counts": decision_counts,
+        "decision_labels": DECISION_LABELS,
+    }
 
 
 app = create_app()

@@ -88,3 +88,13 @@ review:
 - 検索条件は `NEWS_API_QUERY`、`NEWS_API_LANGUAGE`、`NEWS_API_PAGE_SIZE` で調整可能。
 - `NEWS_API_KEY` 未設定または取得失敗時は、従来通り MVP 用モックニュースにフォールバックする。
 - NewsAPI の記事も `GEMINI_API_KEY` があれば Gemini 判定、なければローカルルール判定を使う。
+
+## 2026-06-11 記事表示改善メモ
+- フロントエンドに「ニュース更新」ボタンを追加し、`/api/news/refresh` から NewsAPI 取得と Gemini 判定を再実行できるようにした。
+- `/api/news` と `/api/news/refresh` は NewsAPI / Gemini の設定状態、判定件数、更新結果を返す。
+- Gemini の JSON 解析失敗時は方針どおり `review` 扱いにし、採用一覧には表示しない。
+- 記事カードに「詳細を見る」を追加し、クリックで要約ベースの詳細モーダルを表示する。
+- 一覧と詳細モーダルの両方に「元記事を読む」リンクを表示する。
+- `NEWS_API_KEY` 未設定時のモック記事には、Google News の関連検索 URL を割り当てる。
+- 古い `example.com` URL または空のモック URL が SQLite に残っている場合は、次回取得時に関連検索 URL へ更新する。
+- APIキーはコード、README、作業メモに直書きしない。

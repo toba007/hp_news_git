@@ -72,6 +72,9 @@ Web: `http://127.0.0.1:5173`
 - `GEMINI_API_KEY` が設定されている場合: Gemini API で `include` / `exclude`、`positivity_score`、選定理由を JSON で受け取ります。
 - `NEWS_API_KEY` が設定されている場合: NewsAPI から記事を取得し、AIフィルタまたはルール判定でポジティブニュースだけを表示します。
 - `NEWS_API_KEY` が未設定または取得失敗の場合: MVP 用モックニュースを表示します。
+- Gemini の JSON 解析に失敗した記事は `review` 扱いにし、一覧には表示しません。
+- 画面の「ニュース更新」ボタンから、NewsAPI 取得と Gemini 判定を再実行できます。
+- 画面上部に NewsAPI / Gemini の設定状態、採用・要確認・除外件数を表示します。
 
 PowerShell で AI 判定を有効にする例:
 
@@ -88,3 +91,5 @@ py app.py
 - タイトル、要約、カテゴリ、ポジティブ度、選定理由、出典名、元記事リンクの表示
 - SQLite 保存
 - NewsAPI からの記事取得
+- Gemini による採用判定
+- 手動更新と API 状態表示
