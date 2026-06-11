@@ -70,3 +70,13 @@ review:
   - Flask依存関係インストール済み
   - API起動確認済み: `http://127.0.0.1:5000/api/health`
   - フロント起動確認済み: `http://127.0.0.1:5173/`
+
+## 2026-06-11 作業メモ
+- ローカルの `hp-news` フォルダは `.git` が無い状態だったため、GitHub リポジトリ `https://github.com/toba007/hp_news_git.git` の `main` 履歴を取得して接続した。
+- ローカルに残っていた MVP 実装を GitHub に push する作業を実施。
+- push 対象:
+  - Flask + SQLite の `backend`
+  - React + Vite の `frontend`
+  - MVP 詳細版の `README.md`
+  - Example Domain リンク修正済みの `docs/DEVELOPMENT_LOG.md`
+- `.gitignore` により `backend/positive_news.db`、`backend/.venv/`、`frontend/node_modules/`、`frontend/dist/`、`__pycache__/` はコミット対象外。

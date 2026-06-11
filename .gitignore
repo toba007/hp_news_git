@@ -1,0 +1,6 @@
+backend/.venv/
+backend/positive_news.db
+frontend/dist/
+frontend/node_modules/
+*.pyc
+__pycache__/
