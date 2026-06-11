@@ -5,7 +5,7 @@ import os
 import sqlite3
 from datetime import date
 from pathlib import Path
-from urllib import error, request
+from urllib import error, parse, request
 
 from flask import Flask, jsonify
 from flask_cors import CORS
@@ -16,6 +16,11 @@ DB_PATH = BASE_DIR / "positive_news.db"
 GEMINI_GENERATE_CONTENT_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     "{model}:generateContent?key={api_key}"
+)
+NEWS_API_EVERYTHING_URL = "https://newsapi.org/v2/everything"
+NEWS_API_DEFAULT_QUERY = (
+    "improvement OR solution OR support OR recovery OR breakthrough OR "
+    "innovation OR success OR education OR environment"
 )
 
 
@@ -59,6 +64,17 @@ POSITIVE_KEYWORDS = [
     "削減",
     "向上",
     "活用",
+    "improvement",
+    "solution",
+    "support",
+    "recovery",
+    "breakthrough",
+    "innovation",
+    "success",
+    "education",
+    "environment",
+    "sustainable",
+    "progress",
 ]
 
 RISK_KEYWORDS = [
@@ -73,6 +89,15 @@ RISK_KEYWORDS = [
     "対立",
     "炎上",
     "訃報",
+    "death",
+    "accident",
+    "crime",
+    "disaster",
+    "damage",
+    "arrest",
+    "conflict",
+    "scandal",
+    "war",
 ]
 
 
@@ -245,16 +270,30 @@ def ensure_seed_news() -> None:
 
 
 def fetch_and_store_positive_news() -> int:
-    """Fetch positive news. The MVP currently stores curated mock data."""
-    today = date.today().isoformat()
+    """Fetch positive news from NewsAPI when configured, otherwise use mock data."""
+    news_api_key = os.getenv("NEWS_API_KEY")
+    if news_api_key:
+        try:
+            items = fetch_newsapi_news(news_api_key)
+        except (OSError, KeyError, json.JSONDecodeError, ValueError) as exc:
+            items = build_mock_news_with_reason(
+                f"NewsAPI取得に失敗したためモックデータを使用: {exc}"
+            )
+    else:
+        items = MOCK_NEWS
+
     changed = 0
     with get_connection() as conn:
         mock_titles = [item["title"] for item in MOCK_NEWS]
         placeholders = ", ".join("?" for _ in mock_titles)
         conn.execute(f"DELETE FROM news WHERE title IN ({placeholders})", mock_titles)
         conn.execute("DELETE FROM news WHERE source_url LIKE 'https://example.com/%'")
-        for item in MOCK_NEWS:
+        for item in items:
             classification = classify_news_item(item)
+            reason_prefix = item.get("ai_reason_prefix", "")
+            reason = classification["reason"]
+            if reason_prefix:
+                reason = f"{reason_prefix} / {reason}"
             cursor = conn.execute(
                 """
                 INSERT INTO news (
@@ -279,13 +318,93 @@ def fetch_and_store_positive_news() -> int:
                     classification["positivity_score"],
                     item["source_name"],
                     item["source_url"],
-                    today,
+                    item.get("published_date") or date.today().isoformat(),
                     classification["decision"],
-                    classification["reason"],
+                    reason,
                 ),
             )
             changed += cursor.rowcount
     return changed
+
+
+def fetch_newsapi_news(api_key: str) -> list[dict]:
+    query = os.getenv("NEWS_API_QUERY", NEWS_API_DEFAULT_QUERY)
+    language = os.getenv("NEWS_API_LANGUAGE", "en")
+    page_size = int(os.getenv("NEWS_API_PAGE_SIZE", "20"))
+    page_size = max(1, min(page_size, 100))
+    params = {
+        "q": query,
+        "searchIn": "title,description",
+        "language": language,
+        "sortBy": "publishedAt",
+        "pageSize": str(page_size),
+    }
+    url = f"{NEWS_API_EVERYTHING_URL}?{parse.urlencode(params)}"
+    req = request.Request(url, headers={"X-Api-Key": api_key}, method="GET")
+
+    try:
+        with request.urlopen(req, timeout=20) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise ValueError(f"NewsAPI error {exc.code}: {detail}") from exc
+
+    if data.get("status") != "ok":
+        raise ValueError(data.get("message", "NewsAPI returned an error"))
+
+    items = [
+        item
+        for article in data.get("articles", [])
+        if (item := normalize_newsapi_article(article)) is not None
+    ]
+    if not items:
+        raise ValueError("NewsAPI returned no usable articles")
+    return items
+
+
+def normalize_newsapi_article(article: dict) -> dict | None:
+    title = clean_newsapi_text(article.get("title"))
+    summary = clean_newsapi_text(article.get("description")) or clean_newsapi_text(
+        article.get("content")
+    )
+    source_url = article.get("url") or ""
+    if not title or not summary or not source_url or title == "[Removed]":
+        return None
+
+    source = article.get("source") or {}
+    published_at = article.get("publishedAt") or date.today().isoformat()
+    return {
+        "title": title,
+        "summary": summary,
+        "category": infer_category(f"{title} {summary}"),
+        "positivity_score": 0,
+        "source_name": source.get("name") or "NewsAPI",
+        "source_url": source_url,
+        "published_date": published_at[:10],
+    }
+
+
+def clean_newsapi_text(value: str | None) -> str:
+    if not value:
+        return ""
+    return value.replace("\r", " ").replace("\n", " ").strip()
+
+
+def infer_category(text: str) -> str:
+    lowered = text.lower()
+    if any(word in lowered for word in ["environment", "climate", "energy"]):
+        return "環境"
+    if any(word in lowered for word in ["technology", "ai", "innovation"]):
+        return "テクノロジー"
+    if any(word in lowered for word in ["education", "school", "student"]):
+        return "教育"
+    if any(word in lowered for word in ["health", "medical", "care"]):
+        return "医療・福祉"
+    return "ニュース"
+
+
+def build_mock_news_with_reason(reason: str) -> list[dict]:
+    return [{**item, "ai_reason_prefix": reason} for item in MOCK_NEWS]
 
 
 def classify_news_item(item: dict) -> dict:

@@ -80,3 +80,11 @@ review:
   - MVP 詳細版の `README.md`
   - Example Domain リンク修正済みの `docs/DEVELOPMENT_LOG.md`
 - `.gitignore` により `backend/positive_news.db`、`backend/.venv/`、`frontend/node_modules/`、`frontend/dist/`、`__pycache__/` はコミット対象外。
+
+## 2026-06-11 NewsAPI 作業メモ
+- NewsAPI の APIキーはコードやドキュメントへ直書きしない。
+- バックエンドは `NEWS_API_KEY` 環境変数がある場合に NewsAPI `/v2/everything` から記事を取得する。
+- NewsAPI 認証は `X-Api-Key` ヘッダーを使い、URL にキーを含めない。
+- 検索条件は `NEWS_API_QUERY`、`NEWS_API_LANGUAGE`、`NEWS_API_PAGE_SIZE` で調整可能。
+- `NEWS_API_KEY` 未設定または取得失敗時は、従来通り MVP 用モックニュースにフォールバックする。
+- NewsAPI の記事も `GEMINI_API_KEY` があれば Gemini 判定、なければローカルルール判定を使う。

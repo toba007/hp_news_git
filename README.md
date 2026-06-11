@@ -21,6 +21,21 @@ py app.py
 
 API: `http://127.0.0.1:5000`
 
+NewsAPI を使って実ニュースを取得する場合は、バックエンド起動前に環境変数を設定します。
+
+```powershell
+$env:NEWS_API_KEY="your_newsapi_key"
+py app.py
+```
+
+検索語を変える場合:
+
+```powershell
+$env:NEWS_API_QUERY="education OR environment OR innovation"
+$env:NEWS_API_LANGUAGE="en"
+$env:NEWS_API_PAGE_SIZE="20"
+```
+
 ### フロントエンド
 
 別ターミナルで:
@@ -55,10 +70,13 @@ Web: `http://127.0.0.1:5173`
 
 - `GEMINI_API_KEY` が未設定の場合: 定義に沿ったキーワードベースのルール判定を使います。
 - `GEMINI_API_KEY` が設定されている場合: Gemini API で `include` / `exclude`、`positivity_score`、選定理由を JSON で受け取ります。
+- `NEWS_API_KEY` が設定されている場合: NewsAPI から記事を取得し、AIフィルタまたはルール判定でポジティブニュースだけを表示します。
+- `NEWS_API_KEY` が未設定または取得失敗の場合: MVP 用モックニュースを表示します。
 
 PowerShell で AI 判定を有効にする例:
 
 ```powershell
+$env:NEWS_API_KEY="your_newsapi_key"
 $env:GEMINI_API_KEY="your_api_key"
 $env:GEMINI_MODEL="gemini-2.5-flash"
 py app.py
@@ -69,4 +87,4 @@ py app.py
 - 今日のポジティブニュース一覧
 - タイトル、要約、カテゴリ、ポジティブ度、選定理由、出典名、元記事リンクの表示
 - SQLite 保存
-- 外部ニュース API 接続の仮実装
+- NewsAPI からの記事取得
